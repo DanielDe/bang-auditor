@@ -88,16 +88,11 @@ fileprivate extension Trivia {
 }
 
 class BangAuditorVisitor: SyntaxRewriter {
-    let filePath: String
-
     var isDisabled = false
     var currentLineNumber = 1
-    var currentLine = ""
     var currentLineContainsBang = false
 
-    init(filePath: String) {
-        self.filePath = filePath
-    }
+    var detectedLineNumbers: [Int] = []
 
     static func commentDisablesLine(_ comment: String) -> Bool {
         let trimmed = comment.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -116,29 +111,22 @@ class BangAuditorVisitor: SyntaxRewriter {
                 let firstComment = token.leadingTrivia.firstComment
 
                 if firstComment.isEmpty || !BangAuditorVisitor.commentDisablesLine(firstComment) {
-                    // TODO: print the line by reading the file and grabbing the correct line, instead of reconstructing it.
-                    print("\(self.filePath)::\(self.currentLineNumber)")
-                    print("\n    \(self.currentLine.trimmingCharacters(in: .whitespacesAndNewlines)) \(token.leadingTrivia.firstComment)\n")
+                    self.detectedLineNumbers.append(self.currentLineNumber)
                 }
             }
 
             self.currentLineContainsBang = false
-            self.currentLine = ""
         }
 
         if token.leadingTrivia.containsEnableComment {
             self.isDisabled = false
         }
 
-        self.currentLine += token.text + token.trailingTrivia.whitespaceText
-
         currentLineNumber += token.leadingTrivia.numNewLines
 
         if token.tokenKind == .exclamationMark {
             self.currentLineContainsBang = true
         }
-
-        currentLineNumber += token.trailingTrivia.numNewLines
 
         return token
     }
@@ -147,4 +135,12 @@ class BangAuditorVisitor: SyntaxRewriter {
 print("")
 let filePath = "./Sources/bang-auditor/test-file.swift"
 let sourceFile = try SyntaxParser.parse(URL(fileURLWithPath: filePath))
-let _ = BangAuditorVisitor(filePath: filePath).visit(sourceFile)
+let bangVisitor = BangAuditorVisitor()
+let _ = bangVisitor.visit(sourceFile)
+
+let fileContents = try! String(contentsOf: URL(fileURLWithPath: filePath))
+let fileLines = fileContents.split(separator: "\n", omittingEmptySubsequences: false)
+bangVisitor.detectedLineNumbers.forEach { lineNumber in
+    print("\(filePath)::\(lineNumber)")
+    print("\n    \(fileLines[lineNumber - 1].trimmingCharacters(in: .whitespacesAndNewlines))\n")
+}
